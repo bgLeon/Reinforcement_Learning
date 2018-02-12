@@ -33,8 +33,8 @@ for i_episode in range(max_episodes):
     ep_r = 0
     step=1
     while True:
-        # env.render()
-
+        # if i_episode%20==0:
+        env.render()
         action = RL.choose_action(observation,env)
 
         observation_, reward, done, info = env.step(action)
@@ -45,10 +45,7 @@ for i_episode in range(max_episodes):
         r2 = (env.theta_threshold_radians - abs(theta))/env.theta_threshold_radians - 0.5
         reward = r1 + r2
 
-        # if done and step<=500:
-        #   reward-=200
-
-        RL.store_transition(observation, action, reward, observation_)
+        RL.store_transition(observation, action, reward, done, observation_)
 
         ep_r += reward
         if total_steps > 1000:

@@ -24,8 +24,8 @@ class DQN_linear:
 		#learning steps counter
 		self.learning_step_counter=0
 
-		#initialize memory [s,a,r,s',done] ?añadir done
-		self.memory=np.zeros((self.memory_size,n_features*2+2))
+		#initialize memory [s,a,r,done,s'] ?añadir done
+		self.memory=np.zeros((self.memory_size,n_features*2+3))
 
 		#FF architecture with [target_net, learn_net]
 		self._build_model()
@@ -40,7 +40,7 @@ class DQN_linear:
 		self.sess = tf.Session()
 
 		if self.output_graph:
-			self.writer=tf.summary.FileWriter('./BOARD/1', self.sess.graph)
+			self.writer=tf.summary.FileWriter('./BOARD/4', self.sess.graph)
 		self.sess.run(tf.global_variables_initializer())
 
 	#----------------------------------Inputs----------------------------------
@@ -49,12 +49,12 @@ class DQN_linear:
 		next_states=tf.placeholder(tf.float32,[None,self.n_features],name='s_')
 		actions=tf.placeholder(tf.int32, [None, ], name='a')
 		rewards= tf.placeholder(tf.float32, [None, ], name='r')
-		# done=tf.placehloder(tf.bool)
-		return states,next_states,actions,rewards
+		done=tf.placeholder(tf.bool,[None], name='d')
+		return states,next_states,actions,rewards,done
 
 
 	def _build_model(self):
-		self.s,self.s_,self.a,self.r=self.create_placeholders()
+		self.s,self.s_,self.a,self.r,self.d=self.create_placeholders()
 
 		#----------------------------------building learning_net----------------------------------
 		with tf.variable_scope('learn_net'):
@@ -72,8 +72,9 @@ class DQN_linear:
 		#Creating the G_T our learner network will try to reach
 		with tf.variable_scope('q_target'):
 			q_target = self.r + self.gamma * tf.reduce_max(self.q_next, axis=1, name='Qmax_Target')    # shape=(None, )
+			aux_var=tf.where(self.d,self.r,q_target)
 			#añadir done b = tf.cond(tf.equal(a, tf.constant(True)), lambda: tf.constant(10), lambda: tf.constant(0))
-			self.q_target=tf.stop_gradient(q_target)
+			self.q_target=tf.stop_gradient(aux_var)
 		#Now we are going to create the estimated output 
 		with tf.variable_scope('q_learn'):
 			#one_hot vector with the selected actions for steps training with
@@ -120,28 +121,14 @@ class DQN_linear:
 		self.merged_summary = tf.summary.merge_all()
 
 
-	def store_transition(self,s,a,r,s_):
+	def store_transition(self,s,a,r,d,s_):
 		if not hasattr(self, 'memory_counter'):
 			self.memory_counter = 0
-		memory_slice=np.hstack((s,[a,r],s_))
+		memory_slice=np.hstack((s,[a,r,d],s_))
 		# replace the old memory with new memory
-		# index = self.memory_counter % self.memory_size
-		if self.memory_counter >= self.memory_size:
-			# make sure we always have some painalities.
-			a = self.memory_size* 9 / 10
-			b = self.memory_size - a
-			if r > 0.0:
-				# print(type(a))
-				# print(a.size())
-				idx = np.random.choice(int(a))
-			else:
-				# print(type(b))
-				# print(b.size())
-				idx = np.random.choice(int(b)) + int(a)
-		else:
-			idx = self.memory_counter
-		self.memory[idx, :] = memory_slice
-		self.memory_counter+=1
+		index = self.memory_counter % self.memory_size
+		self.memory[index, :] = memory_slice
+		self.memory_counter += 1
 
 	def choose_action(self,observation,env):
 		# to have batch dimension when feed into tf placeholder
@@ -168,6 +155,7 @@ class DQN_linear:
 				self.s: batch_memory[:, :self.n_features],
 				self.a: batch_memory[:, self.n_features],
 				self.r: batch_memory[:, self.n_features+1],
+				self.d: batch_memory[:, self.n_features+2],
 				self.s_: batch_memory[:, -self.n_features:]
 				})
 			self.writer.add_summary(summ)
@@ -176,11 +164,10 @@ class DQN_linear:
 				self.s: batch_memory[:, :self.n_features],
 				self.a: batch_memory[:, self.n_features],
 				self.r: batch_memory[:, self.n_features+1],
+				self.d: batch_memory[:, self.n_features+2],
 				self.s_: batch_memory[:, -self.n_features:]
 				})
 		#decreasing epsilon
-		# new_ep=self.epsilon*self.exploration_decrement
-		# self.epsilon= new_ep if new_ep > self.epsilon_min else self.epsilon_min
 		self.epsilon = self.epsilon * self.exploration_decrement if self.epsilon > self.epsilon_min else self.epsilon_min
 		self.learning_step_counter += 1
 
